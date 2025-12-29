@@ -1,0 +1,63 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to rollback'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        type: string
+
+jobs:
+  rollback:
+    name: Rollback ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: ${{ github.event.inputs.environment }}
+
+      - name: Verify cluster
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Perform rollback
+        run: |
+          NAMESPACE=${{ github.event.inputs.environment }}
+          
+          echo "🔄 Rolling back deployment in $NAMESPACE..."
+          echo "Reason: ${{ github.event.inputs.reason }}"
+          
+          # Rollback to previous revision
+          kubectl rollout undo deployment/python-app -n $NAMESPACE
+          kubectl rollout status deployment/python-app -n $NAMESPACE --timeout=2m
+          
+          echo "✅ Rollback completed successfully"
+
+      - name: Verify rollback
+        run: |
+          NAMESPACE=${{ github.event.inputs.environment }}
+          kubectl wait --for=condition=ready pod -l app=python-app -n $NAMESPACE --timeout=2m
+          echo "✅ Rollback verified"
+
+      - name: Show deployment status
+        if: always()
+        run: |
+          NAMESPACE=${{ github.event.inputs.environment }}
+          echo "📊 Current deployment status:"
+          kubectl get all -n $NAMESPACE
