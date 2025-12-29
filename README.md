@@ -1,2 +1,7 @@
-# CI-CD-Pipeline-Design
-Design a CI/CD pipeline for a Python web application that needs to be deployed to Kubernetes.
+# Python K8s CI/CD
+
+1. Create `staging` and `production` environments in GitHub
+2. Push to develop → auto-deploys
+3. Push to main → requires approval → deploys
+
+See Actions tab for deployment status!

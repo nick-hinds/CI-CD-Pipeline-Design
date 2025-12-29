@@ -1,0 +1,55 @@
+name: CI/CD with kind
+on:
+  push:
+    branches: [main, develop]
+env:
+  IMAGE_NAME: python-app
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip' }
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: pytest tests/ -v
+      - run: docker build -t python-app:latest .
+      - run: docker save python-app:latest > /tmp/app.tar
+      - uses: actions/upload-artifact@v4
+        with: { name: docker-image, path: /tmp/app.tar }
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: docker-image, path: /tmp }
+      - run: docker load < /tmp/app.tar
+      - uses: helm/kind-action@v1
+        with: { cluster_name: staging }
+      - run: |
+          kind load docker-image python-app:latest --name staging
+          kubectl create ns staging || true
+          kubectl apply -f k8s/ -n staging
+          kubectl set image deployment/python-app python-app=python-app:latest -n staging
+          kubectl rollout status deployment/python-app -n staging
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: docker-image, path: /tmp }
+      - run: docker load < /tmp/app.tar
+      - uses: helm/kind-action@v1
+        with: { cluster_name: production }
+      - run: |
+          kind load docker-image python-app:latest --name production
+          kubectl create ns production || true
+          kubectl apply -f k8s/ -n production
+          kubectl set image deployment/python-app python-app=python-app:latest -n production
+          kubectl rollout status deployment/python-app -n production
