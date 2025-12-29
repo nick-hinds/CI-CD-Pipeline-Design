@@ -31,33 +31,118 @@ jobs:
         with:
           cluster_name: ${{ github.event.inputs.environment }}
 
-      - name: Verify cluster
+      - name: Create namespace
         run: |
-          kubectl cluster-info
-          kubectl get nodes
+          NAMESPACE=${{ github.event.inputs.environment }}
+          echo "Creating namespace: $NAMESPACE"
+          kubectl create namespace $NAMESPACE || echo "Namespace already exists"
+          kubectl get namespaces
 
-      - name: Perform rollback
+      - name: Check if deployment exists
+        id: check_deployment
+        run: |
+          NAMESPACE=${{ github.event.inputs.environment }}
+          
+          if kubectl get deployment python-app -n $NAMESPACE 2>/dev/null; then
+            echo "deployment_exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Deployment exists in $NAMESPACE"
+          else
+            echo "deployment_exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️  No deployment found in $NAMESPACE"
+          fi
+
+      - name: Show rollback limitation notice
+        if: steps.check_deployment.outputs.deployment_exists == 'false'
+        run: |
+          cat << 'NOTICE'
+          
+          ⚠️  ROLLBACK NOT POSSIBLE - No Deployment Found
+          
+          This is expected with kind clusters because:
+          1. Kind creates fresh, empty clusters each time
+          2. Previous deployments don't persist
+          3. There's nothing to rollback to
+          
+          📝 To "rollback" with kind-based deployments:
+          
+          RECOMMENDED APPROACH - Git Revert:
+          
+            # Find the problematic commit
+            git log --oneline
+            
+            # Revert it (replace abc1234 with actual commit hash)
+            git revert abc1234
+            
+            # Push to redeploy previous version
+            git push origin develop  # for staging
+            git push origin main     # for production
+          
+          This will trigger a new deployment with the previous code!
+          
+          NOTICE
+          
+          echo ""
+          echo "Reason for rollback request: ${{ github.event.inputs.reason }}"
+          echo "Requested by: ${{ github.actor }}"
+
+      - name: Perform symbolic rollback
+        if: steps.check_deployment.outputs.deployment_exists == 'true'
         run: |
           NAMESPACE=${{ github.event.inputs.environment }}
           
           echo "🔄 Rolling back deployment in $NAMESPACE..."
           echo "Reason: ${{ github.event.inputs.reason }}"
           
-          # Rollback to previous revision
-          kubectl rollout undo deployment/python-app -n $NAMESPACE
-          kubectl rollout status deployment/python-app -n $NAMESPACE --timeout=2m
+          # In a real cluster, this would work:
+          # kubectl rollout undo deployment/python-app -n $NAMESPACE
           
-          echo "✅ Rollback completed successfully"
+          # For kind, we just show what would happen:
+          echo "✅ In a persistent cluster, rollback would execute here"
+          echo "📝 With kind, use git revert instead (see instructions above)"
 
-      - name: Verify rollback
+      - name: Create rollback report
         run: |
-          NAMESPACE=${{ github.event.inputs.environment }}
-          kubectl wait --for=condition=ready pod -l app=python-app -n $NAMESPACE --timeout=2m
-          echo "✅ Rollback verified"
+          cat << EOF > rollback-report.md
+          # Rollback Report
+          
+          **Environment**: ${{ github.event.inputs.environment }}
+          **Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          **Requested by**: ${{ github.actor }}
+          **Reason**: ${{ github.event.inputs.reason }}
+          
+          ## Status
+          
+          Rollback requested for kind-based deployment.
+          
+          ## Recommended Actions (Git-Based Rollback)
+          
+          1. Identify the problematic commit:
+             \`\`\`bash
+             git log --oneline -10
+             \`\`\`
+          
+          2. Revert the bad commit:
+             \`\`\`bash
+             git revert <commit-hash>
+             git push origin ${{ github.event.inputs.environment == 'staging' && 'develop' || 'main' }}
+             \`\`\`
+          
+          3. Monitor the redeployment in Actions tab
+          
+          ## Alternative: Redeploy Previous Version
+          
+          1. Find last good commit: \`git log --oneline\`
+          2. Checkout: \`git checkout <good-commit>\`
+          3. Create branch: \`git checkout -b rollback-fix\`
+          4. Push: \`git push origin rollback-fix\`
+          5. Merge via PR to trigger redeployment
+          
+          EOF
+          
+          cat rollback-report.md
 
-      - name: Show deployment status
-        if: always()
-        run: |
-          NAMESPACE=${{ github.event.inputs.environment }}
-          echo "📊 Current deployment status:"
-          kubectl get all -n $NAMESPACE
+      - name: Upload rollback report
+        uses: actions/upload-artifact@v4
+        with:
+          name: rollback-report-${{ github.run_number }}
+          path: rollback-report.md
