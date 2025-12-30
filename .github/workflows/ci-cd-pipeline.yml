@@ -247,7 +247,7 @@ jobs:
       - name: Load Docker image
         run: |
           docker load < /tmp/python-app.tar
-
+#test
       - name: Create kind cluster (staging)
         uses: helm/kind-action@v1
         with:
