@@ -1,5 +1,7 @@
 # Python Kubernetes CI/CD Pipeline with kind
 
+### Exercise time: ~2 hrs
+
 A **production-ready, zero-setup** CI/CD pipeline for deploying Python web applications to Kubernetes using **kind (Kubernetes in Docker)**. Everything runs in GitHub Actions - no external clusters or cloud costs required!
 
 ## 🎯 Overview
