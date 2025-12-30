@@ -277,9 +277,17 @@ jobs:
 
       - name: Wait for deployment
         run: |
-          kubectl rollout status deployment/python-app -n staging --timeout=2m
-          kubectl wait --for=condition=ready pod -l app=python-app -n staging --timeout=2m
-          echo "✅ Deployment ready"
+          # Wait for rollout to complete
+          kubectl rollout status deployment/python-app -n staging --timeout=3m
+          
+          # Get the current replica set
+          CURRENT_RS=$(kubectl get rs -n staging -l app=python-app --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
+          echo "Current ReplicaSet: $CURRENT_RS"
+          
+          # Wait only for pods from current replica set
+          kubectl wait --for=condition=ready pod -l app=python-app -n staging --timeout=2m --field-selector=status.phase=Running
+          
+          echo "✅ staging deployment ready"
 
       - name: Run smoke tests
         run: |
@@ -374,8 +382,16 @@ jobs:
 
       - name: Wait for deployment
         run: |
+          # Wait for rollout to complete
           kubectl rollout status deployment/python-app -n production --timeout=3m
-          kubectl wait --for=condition=ready pod -l app=python-app -n production --timeout=3m
+          
+          # Get the current replica set
+          CURRENT_RS=$(kubectl get rs -n production -l app=python-app --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
+          echo "Current ReplicaSet: $CURRENT_RS"
+          
+          # Wait only for pods from current replica set
+          kubectl wait --for=condition=ready pod -l app=python-app -n production --timeout=2m --field-selector=status.phase=Running
+          
           echo "✅ Production deployment ready"
 
       - name: Run production smoke tests
