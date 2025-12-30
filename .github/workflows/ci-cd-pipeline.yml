@@ -247,20 +247,11 @@ jobs:
       - name: Load Docker image
         run: |
           docker load < /tmp/python-app.tar
-#test
+
       - name: Create kind cluster (staging)
         uses: helm/kind-action@v1
         with:
-          cluster_name: staging
-          config: |
-            kind: Cluster
-            apiVersion: kind.x-k8s.io/v1alpha4
-            nodes:
-            - role: control-plane
-              extraPortMappings:
-              - containerPort: 30080
-                hostPort: 8080
-                protocol: TCP
+          cluster_name: stagingP
 
       - name: Load image to kind
         run: |
@@ -351,15 +342,6 @@ jobs:
         uses: helm/kind-action@v1
         with:
           cluster_name: production
-          config: |
-            kind: Cluster
-            apiVersion: kind.x-k8s.io/v1alpha4
-            nodes:
-            - role: control-plane
-              extraPortMappings:
-              - containerPort: 30080
-                hostPort: 8080
-                protocol: TCP
 
       - name: Load image to kind
         run: |
